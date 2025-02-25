@@ -92,7 +92,6 @@ async fn main() -> anyhow::Result<()> {
     println!("Wait one minute before starting to resolve records");
 
     run_churn_loop(
-        &client,
         published_records,
         cli.stop_fraction,
         cli.sleep_duration_ms,
@@ -149,11 +148,13 @@ async fn publish_records(
 }
 
 async fn run_churn_loop(
-    client: &Client,
     verified_records: Vec<(PublicKey, Instant)>,
     stop_fraction: f64,
     sleep_duration_ms: u64,
 ) -> anyhow::Result<()> {
+    let client = Client::builder()
+    .no_relays()
+    .build()?;
     let verified_count = verified_records.len();
     let mut active_keys: HashSet<PublicKey> =
         verified_records.iter().map(|(pk, _)| pk.clone()).collect();
