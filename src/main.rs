@@ -8,33 +8,11 @@ use clap::Parser;
 use pkarr::{Client, Keypair, PublicKey, SignedPacket};
 
 
-#[derive(Parser, Debug)]
-#[command(author, version, about)]
-struct Cli {
-    /// Number of records to publish
-    #[arg(long, default_value_t = 100)]
-    num_records: usize,
-
-    /// Stop after this fraction of records cannot be resolved (0.0 < x <= 1.0)
-    #[arg(long, default_value_t = 0.90)]
-    stop_fraction: f64,
-
-    /// TTL (in seconds) for the published records
-    #[arg(long, default_value_t = 604800)]
-    ttl_s: u32,
-
-    /// Sleep duration (in millis) between resolves
-    #[arg(long, default_value_t = 1000)]
-    sleep_duration_ms: u64,
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     simple_test().await;
     Ok(())
 }
-
-
 
 fn create_packet(keypair: &Keypair) -> SignedPacket {
     let packet = SignedPacket::builder()
@@ -48,6 +26,8 @@ fn create_packet(keypair: &Keypair) -> SignedPacket {
     packet
 }
 
+/// Double checks if the packet is really missing with a new pkarr client.
+/// Usually it finds it this way.
 async fn double_check_missing(pubkey: &PublicKey) {
     println!("  - Double check if key is really missing with a new pkarr client.");
     let client = Client::builder()
@@ -64,12 +44,14 @@ async fn double_check_missing(pubkey: &PublicKey) {
 
 async fn simple_test() {
     let client = Client::builder()
-        .no_relays()
-        .cache_size(0)
+        .no_relays() 
+        .cache_size(0) // Disable caching so we actually call the DHT.
         .maximum_ttl(0)
         .build()
         .unwrap();
     let mut keys: Vec<PublicKey> = vec![];
+
+    // Publish 100 packets and save the public keys.
     for i in 0..100 {
         let keypair = Keypair::random();
         keys.push(keypair.public_key());
@@ -83,6 +65,7 @@ async fn simple_test() {
         println!();
         println!("Start resolving keys.");
         for pubkey in keys.iter() {
+            // Resolve key with the same client.
             let packet = client.resolve_most_recent(pubkey).await;
             if packet.is_none() {
                 println!("- Packet for {pubkey} missing!");
@@ -90,6 +73,7 @@ async fn simple_test() {
             } else {
                 println!("- {pubkey} all good.")
             }
+            // Sleep so we don't run into any rate limits. Not sure if this is needed.
             tokio::time::sleep(Duration::from_millis(2000)).await;
         }
     }
