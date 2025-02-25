@@ -87,7 +87,13 @@ async fn main() -> anyhow::Result<()> {
 
     println!("Wait one minute before starting to resolve records");
 
-    run_churn_loop(published_records, cli.stop_fraction, cli.sleep_duration_ms).await?;
+    run_churn_loop(
+        client,
+        published_records,
+        cli.stop_fraction,
+        cli.sleep_duration_ms,
+    )
+    .await?;
 
     Ok(())
 }
@@ -139,11 +145,11 @@ async fn publish_records(
 }
 
 async fn run_churn_loop(
+    client: Client,
     verified_records: Vec<(PublicKey, Instant)>,
     stop_fraction: f64,
     sleep_duration_ms: u64,
 ) -> anyhow::Result<()> {
-    let client = Client::builder().no_relays().build()?;
     let total_keys = verified_records.len();
     // Map to record the first time a key fails to resolve.
     let mut potential_churn: HashMap<PublicKey, Instant> = HashMap::new();
