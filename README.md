@@ -1,6 +1,6 @@
 # DHT Churn Experiment
 
-Measure and visualize churn times (in milliseconds) for Pkarr records in the Mainline DHT.
+Measure and visualize churn times for Pkarr records in the Mainline DHT.
 
 ## 🚀 Overview
 
