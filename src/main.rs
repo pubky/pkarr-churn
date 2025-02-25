@@ -89,11 +89,7 @@ async fn main() -> anyhow::Result<()> {
         start.elapsed()
     );
 
-    println!(
-        "Wait one minute before verify {} records in {:?}",
-        published_records.len(),
-        start.elapsed()
-    );
+    println!("Wait one minute before starting to resolve records");
 
     run_churn_loop(
         &client,
@@ -173,7 +169,7 @@ async fn run_churn_loop(
         );
 
         for (pubkey, publish_instant) in &verified_records {
-            tokio::time::sleep(Duration::from_secs(sleep_duration_ms)).await;
+            tokio::time::sleep(Duration::from_millis(sleep_duration_ms)).await;
 
             if !active_keys.contains(pubkey) {
                 continue;
