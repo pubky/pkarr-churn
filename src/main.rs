@@ -42,7 +42,7 @@
 use clap::Parser;
 use pkarr::{Client, Keypair, PublicKey, SignedPacket};
 use std::{
-    collections::HashSet,
+    collections::HashMap,
     fs::File,
     io::{BufWriter, Write},
     time::{Duration, Instant},
@@ -64,7 +64,7 @@ struct Cli {
     ttl_s: u32,
 
     /// Sleep duration (in millis) between resolves
-    #[arg(long, default_value_t = 1000)]
+    #[arg(long, default_value_t = 3000)]
     sleep_duration_ms: u64,
 }
 
@@ -144,9 +144,9 @@ async fn run_churn_loop(
     sleep_duration_ms: u64,
 ) -> anyhow::Result<()> {
     let client = Client::builder().no_relays().build()?;
-    let verified_count = verified_records.len();
-    let mut active_keys: HashSet<PublicKey> =
-        verified_records.iter().map(|(pk, _)| pk.clone()).collect();
+    let total_keys = verified_records.len();
+    // Map to record the first time a key fails to resolve.
+    let mut potential_churn: HashMap<PublicKey, Instant> = HashMap::new();
 
     let file = File::create("churns.csv")?;
     let mut writer = BufWriter::new(file);
@@ -154,45 +154,55 @@ async fn run_churn_loop(
 
     loop {
         println!(
-            "\n--- Churn pass; {} active keys remain ---",
-            active_keys.len()
+            "\n--- Churn pass; {} keys are currently marked as unresolved ---",
+            potential_churn.len()
         );
 
-        for (pubkey, publish_instant) in &verified_records {
+        for (pubkey, _publish_instant) in &verified_records {
             tokio::time::sleep(Duration::from_millis(sleep_duration_ms)).await;
 
-            if !active_keys.contains(pubkey) {
-                continue;
-            }
-
+            // Try to resolve the key.
             if client.resolve(pubkey).await.is_some() {
-                println!("Key {pubkey} still resolvable.");
+                // If it had been marked as unresolved before, clear the flag.
+                if potential_churn.remove(pubkey).is_some() {
+                    println!("Key {pubkey} recovered; clearing failure record.");
+                } else {
+                    println!("Key {pubkey} is resolvable.");
+                }
             } else {
-                let elapsed_s = publish_instant.elapsed().as_secs();
-                println!("Key {pubkey} churned after {elapsed_s} seconds.");
-                writeln!(writer, "{pubkey},{elapsed_s}")?;
-                writer.flush()?;
-                active_keys.remove(pubkey);
-
-                let churned_count = verified_count - active_keys.len();
-                let fraction = churned_count as f64 / verified_count as f64;
-                println!(
-                    "Churned so far: {churned_count}/{verified_count} ({:.2}%)",
-                    fraction * 100.0
-                );
-
-                if fraction >= stop_fraction {
-                    println!(
-                        "Stop fraction ({:.2}%) reached. Logging remaining keys with time=0.",
-                        fraction * 100.0
-                    );
-                    for remaining in &active_keys {
-                        writeln!(writer, "{remaining},0")?;
-                    }
-                    writer.flush()?;
-                    return Ok(());
+                // If this is the first time we see a failure, record the time.
+                if !potential_churn.contains_key(pubkey) {
+                    potential_churn.insert(pubkey.clone(), Instant::now());
+                    println!("Key {pubkey} unresolved; marking first failure timestamp.");
+                } else {
+                    println!("Key {pubkey} remains unresolved.");
                 }
             }
         }
+
+        let churn_fraction = potential_churn.len() as f64 / total_keys as f64;
+        println!("Current churn fraction: {:.2}%", churn_fraction * 100.0);
+
+        if churn_fraction >= stop_fraction {
+            println!(
+                "Stop fraction reached ({}%). Ending churn monitoring.",
+                churn_fraction * 100.0
+            );
+            break;
+        }
     }
+
+    // Final logging: for keys that remain unresolved, log the churn time
+    // (difference between the first failure and publication). Keys that never failed
+    // are logged with a churn time of 0.
+    for (pubkey, publish_instant) in &verified_records {
+        if let Some(failure_instant) = potential_churn.get(pubkey) {
+            let churn_time = failure_instant.duration_since(*publish_instant).as_secs();
+            writeln!(writer, "{pubkey},{churn_time}")?;
+        } else {
+            writeln!(writer, "{pubkey},0")?;
+        }
+    }
+    writer.flush()?;
+    Ok(())
 }
