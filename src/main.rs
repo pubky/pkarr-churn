@@ -16,11 +16,7 @@
 //!
 //! 1. **Publishing Phase**: A specified number of records (defaults to 100) are published sequentially into the DHT with a given TTL.
 //!    The publishing progress is logged along with the average time per publish.
-//!
-//! 2. **Verification Phase**: Immediately after publishing, the experiment verifies that each record is resolvable.
-//!    Records that fail to resolve immediately are discarded, ensuring that only active records are tracked.
-//!
-//! 3. **Churn Phase**: In a loop, the experiment periodically attempts to resolve the verified records.
+//! 2. **Churn Phase**: In a loop, the experiment periodically attempts to resolve the verified records.
 //!    When a record is no longer resolvable, its churn time (i.e. the elapsed time since publication) is recorded
 //!    in a CSV file. The experiment stops when a preconfigured fraction of the records have churned,
 //!    logging any remaining active records with a churn time of 0.
@@ -91,12 +87,7 @@ async fn main() -> anyhow::Result<()> {
 
     println!("Wait one minute before starting to resolve records");
 
-    run_churn_loop(
-        published_records,
-        cli.stop_fraction,
-        cli.sleep_duration_ms,
-    )
-    .await?;
+    run_churn_loop(published_records, cli.stop_fraction, cli.sleep_duration_ms).await?;
 
     Ok(())
 }
@@ -152,9 +143,7 @@ async fn run_churn_loop(
     stop_fraction: f64,
     sleep_duration_ms: u64,
 ) -> anyhow::Result<()> {
-    let client = Client::builder()
-    .no_relays()
-    .build()?;
+    let client = Client::builder().no_relays().build()?;
     let verified_count = verified_records.len();
     let mut active_keys: HashSet<PublicKey> =
         verified_records.iter().map(|(pk, _)| pk.clone()).collect();
