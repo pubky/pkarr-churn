@@ -20,7 +20,7 @@
 //!    The experiment stops when either:
 //!    - A preconfigured fraction of the records have churned (defaults to 0.8), or
 //!    - A specified maximum observation duration (defaults to 12 hours) has elapsed.
-//!    
+//!
 //!    When a record is no longer resolvable, its churn time (i.e. the elapsed time since publication) is recorded
 //!    in a CSV file. Remaining active records at the end of the experiment are logged with a churn time of 0.
 //!
@@ -45,193 +45,167 @@
 //!
 
 use clap::Parser;
-use pkarr::{Client, Keypair, PublicKey, SignedPacket};
+use helpers::count_dht_nodes_storing_packet;
+use mainline::Dht;
+use pkarr::Client;
+use published_key::PublishedKey;
 use std::{
-    collections::HashMap,
     fs::File,
     io::{BufWriter, Write},
+    process::exit,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::{Duration, Instant},
 };
+use tracing::{error, info, level_filters::LevelFilter};
+use tracing_subscriber::EnvFilter;
+
+mod helpers;
+mod published_key;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
 struct Cli {
     /// Number of records to publish
-    #[arg(long, default_value_t = 500)]
+    #[arg(long, default_value_t = 50)]
     num_records: usize,
 
-    /// Stop after this fraction of records cannot be resolved (0.0 < x <= 1.0)
-    #[arg(long, default_value_t = 0.8)]
-    stop_fraction: f64,
-
-    /// TTL (in seconds) for the published records
-    #[arg(long, default_value_t = 604800)]
-    ttl_s: u32,
-
-    /// Sleep duration (in millis) between resolves
-    #[arg(long, default_value_t = 1000)]
-    sleep_duration_ms: u64,
-
     /// Maximum duration (in hours) for the churn monitoring phase
-    #[arg(long, default_value_t = 12)]
+    #[arg(long, default_value_t = 4*24)]
     max_hours: u64,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    println!("pkarr_churn_experiment started.");
+    // Initialize tracing
+    let filter = EnvFilter::from_default_env()
+        .add_directive(LevelFilter::ERROR.into())
+        .add_directive("pkarr_churn_experiment=trace".parse().unwrap());
+    tracing_subscriber::fmt().with_env_filter(filter).init();
+
+    // Set up the Ctrl+C handler
+    let ctrlc_pressed: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+    let r = ctrlc_pressed.clone();
+    ctrlc::set_handler(move || {
+        r.store(true, Ordering::SeqCst);
+        println!("Ctrl+C detected, shutting down...");
+    })
+    .expect("Error setting Ctrl+C handler");
+
+    println!("Press Ctrl+C to stop...");
+
     let cli = Cli::parse();
-    let client = Client::builder()
-        .cache_size(0)
-        .maximum_ttl(0)
-        .no_relays()
-        .build()?;
 
     let start = Instant::now();
-    let published_records = publish_records(&client, cli.num_records, cli.ttl_s).await;
-    println!(
+
+    info!("Publish {} records", cli.num_records);
+    let published_keys = publish_records(cli.num_records, &ctrlc_pressed).await;
+    info!(
         "Published {} records in {:?}",
-        published_records.len(),
+        published_keys.len(),
         start.elapsed()
     );
+    println!();
 
-    println!("Wait one minute before starting to resolve records");
-
-    let max_duration = Duration::from_secs(cli.max_hours * 3600);
-    run_churn_loop(
-        client,
-        published_records,
-        cli.stop_fraction,
-        cli.sleep_duration_ms,
-        max_duration,
-    )
-    .await?;
+    run_churn_loop(published_keys, &ctrlc_pressed).await;
 
     Ok(())
 }
 
-async fn publish_records(
-    client: &Client,
-    num_records: usize,
-    ttl_s: u32,
-) -> Vec<(PublicKey, Instant)> {
+/// Publish x packets
+async fn publish_records(num_records: usize, ctrlc_pressed: &Arc<AtomicBool>) -> Vec<PublishedKey> {
+    let client = Client::builder().no_relays().build().unwrap();
     let mut records = Vec::with_capacity(num_records);
-    let mut total_publish_duration: u64 = 0;
 
     for i in 0..num_records {
-        let keypair = Keypair::random();
-        let packet = match SignedPacket::builder()
-            .txt(
-                "_experiment".try_into().unwrap(),
-                "dht-test".try_into().unwrap(),
-                ttl_s,
-            )
-            .sign(&keypair)
-        {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("Failed to build packet: {e}");
-                continue;
-            }
-        };
-
-        let publish_start = Instant::now();
+        let key = PublishedKey::random();
+        let packet = key.create_packet();
         if let Err(e) = client.publish(&packet, None).await {
-            eprintln!("Failed to publish record: {e:?}");
+            error!("Failed to publish {} record: {e:?}", key.public_key());
             continue;
         }
-        let elapsed = publish_start.elapsed();
-        total_publish_duration += elapsed.as_micros() as u64;
+        info!("- {i}/{num_records} Published {}", key.public_key());
+        records.push(key);
 
-        records.push((keypair.public_key(), Instant::now()));
-
-        let avg_secs = (total_publish_duration as f64) / ((i + 1) as f64 * 1_000_000.0);
-        println!(
-            "Published {} records: avg time per record: {:.6} s",
-            i + 1,
-            avg_secs
-        );
+        if ctrlc_pressed.load(Ordering::Relaxed) {
+            exit(0);
+        }
     }
-
     records
 }
 
 async fn run_churn_loop(
-    client: Client,
-    verified_records: Vec<(PublicKey, Instant)>,
-    stop_fraction: f64,
-    sleep_duration_ms: u64,
-    max_duration: Duration,
-) -> anyhow::Result<()> {
-    let total_keys = verified_records.len();
-    // Map to record the first time a key fails to resolve.
-    let mut potential_churn: HashMap<PublicKey, Instant> = HashMap::new();
-
-    let file = File::create("churns4.csv")?;
+    mut all_keys: Vec<PublishedKey>,
+    ctrlc_pressed: &Arc<AtomicBool>,
+) -> Vec<PublishedKey> {
+    let file = File::create("churns.csv").unwrap();
     let mut writer = BufWriter::new(file);
-    writeln!(writer, "pubkey,time_s")?;
+    writeln!(writer, "pubkey,time_s").unwrap();
 
-    let churn_start = Instant::now();
+    let client = Dht::client().unwrap();
+    client.bootstrapped();
+    let all_keys_count = all_keys.len();
     loop {
-        println!(
-            "\n--- Churn pass; {} keys are currently marked as unresolved ---",
-            potential_churn.len()
-        );
+        let churn_count = all_keys.iter().filter(|key| key.is_churned()).count();
+        let churn_fraction = churn_count as f64 / all_keys.len() as f64;
+        info!("Current churn fraction: {:.2}%", churn_fraction * 100.0);
 
-        for (pubkey, _publish_instant) in &verified_records {
-            tokio::time::sleep(Duration::from_millis(sleep_duration_ms)).await;
-
+        for (i, key) in all_keys.iter_mut().enumerate() {
+            let pubkey = &key.public_key();
+            let nodes_count = count_dht_nodes_storing_packet(pubkey, &client);
             // Try to resolve the key.
-            if client.resolve(pubkey).await.is_some() {
-                // If it had been marked as unresolved before, clear the flag.
-                if potential_churn.remove(pubkey).is_some() {
-                    println!("Key {pubkey} recovered; clearing failure record.");
-                } else {
-                    println!("Key {pubkey} is resolvable.");
-                }
+            if nodes_count > 0 {
+                info!("- {i}/{all_keys_count} Key {pubkey} is resolvable on {nodes_count} nodes.");
+                key.mark_as_available();
             } else {
-                // If this is the first time we see a failure, record the time.
-                if !potential_churn.contains_key(pubkey) {
-                    potential_churn.insert(pubkey.clone(), Instant::now());
-                    println!("Key {pubkey} unresolved; marking first failure timestamp.");
-                } else {
-                    println!("Key {pubkey} remains unresolved.");
-                }
+                info!("- {i}/{all_keys_count} Key {pubkey} unresolved");
+                key.mark_as_churned();
+            }
+
+            if ctrlc_pressed.load(Ordering::Relaxed) {
+                break;
             }
         }
 
-        let churn_fraction = potential_churn.len() as f64 / total_keys as f64;
-        println!("Current churn fraction: {:.2}%", churn_fraction * 100.0);
-
-        // Stop if the unresolved fraction threshold is reached.
-        if churn_fraction >= stop_fraction {
-            println!(
-                "Stop fraction reached ({}%). Ending churn monitoring.",
-                churn_fraction * 100.0
-            );
-            break;
+        if ctrlc_pressed.load(Ordering::Relaxed) {
+            break
         }
 
-        // Also stop if the maximum duration has been exceeded.
-        if churn_start.elapsed() >= max_duration {
-            println!(
-                "Maximum duration of {} hours reached. Ending churn monitoring.",
-                max_duration.as_secs() / 3600
-            );
-            break;
+        info!("Sleep 1min before next loop");
+        for _ in 0..60 {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            if ctrlc_pressed.load(Ordering::Relaxed) {
+                break
+            }
         }
+        println!("---------------------\n")
     }
-
-    // Final logging: for keys that remain unresolved, log the churn time
-    // (difference between the first failure and publication). Keys that never failed
-    // are logged with a churn time of 0.
-    for (pubkey, publish_instant) in &verified_records {
-        if let Some(failure_instant) = potential_churn.get(pubkey) {
-            let churn_time = failure_instant.duration_since(*publish_instant).as_secs();
-            writeln!(writer, "{pubkey},{churn_time}")?;
-        } else {
-            writeln!(writer, "{pubkey},0")?;
-        }
-    }
-    writer.flush()?;
-    Ok(())
+    all_keys
 }
+
+// // Final logging: for keys that remain unresolved, log the churn time
+// // (difference between the first failure and publication). Keys that never failed
+// // are logged with a churn time of 0.
+// for (pubkey, publish_instant) in &all_keys {
+//     if let Some(failure_instant) = potential_churn.get(pubkey) {
+//         let churn_time = failure_instant.duration_since(*publish_instant).as_secs();
+//         writeln!(writer, "{pubkey},{churn_time}")?;
+//     } else {
+//         writeln!(writer, "{pubkey},0")?;
+//     }
+// }
+// writer.flush()?;
+// Ok(())
+
+//     if let Some(failure_instant) = potential_churn.get(pubkey) {
+//         let churn_time = failure_instant.duration_since(*publish_instant).as_secs();
+//         writeln!(writer, "{pubkey},{churn_time}")?;
+//     } else {
+//         writeln!(writer, "{pubkey},0")?;
+//     }
+// }
+// writer.flush()?;
+// Ok(())
