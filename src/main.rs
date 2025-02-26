@@ -168,7 +168,8 @@ async fn run_churn_loop(
             if ctrlc_pressed.load(Ordering::Relaxed) {
                 break;
             }
-            tokio::time::sleep(Duration::from_secs(10)).await;
+            // Sleep 10s
+            tokio::time::sleep(Duration::from_secs(60)).await;
         }
 
         if ctrlc_pressed.load(Ordering::Relaxed) {
