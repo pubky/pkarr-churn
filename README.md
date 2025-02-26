@@ -7,11 +7,12 @@ Measure and visualize churn times for Pkarr records in the Mainline DHT.
 1. **Rust Experiment (`main.rs`)**
 
    - **Publish:** Pushes records to the DHT.
-   - **Churn Tracking:** Periodically checks record resolvability; logs churn times (`churns.csv`).
+   - **Churn Tracking:** Periodically checks record resolvability; logs churn times to `churns.csv`.
 
-2. **Python Visualization (`plot.py`)**
+2. **Python Analysis (`analyze.py`)**
    - Reads `churns.csv`
-   - Plots churn time distribution (`churn_distribution.png`)
+   - Computes key metrics (mean lifetime, half-life, hourly survival probability)
+   - Plots the observed survival curve with an exponential model fit (saved as `survival_plot.png`)
 
 ## ⚡️ Setup
 
@@ -20,47 +21,47 @@ Measure and visualize churn times for Pkarr records in the Mainline DHT.
 - Install [Rust](https://www.rust-lang.org/tools/install).
 - Build & Run:
 
-```bash
-  cargo build --release
-  cargo run --release -- --num-records 100 --stop-fraction 0.9 --ttl-s 604800 --sleep-duration-ms 1000
-  # or simply `cargo run` for defaults
+```
+   cargo build --release
+   cargo run --release -- --num-records 100 --stop-fraction 0.9 --ttl-s 604800 --sleep-duration-ms 1000 --max-hours 12
+   # or simply `cargo run` for defaults
 ```
 
 ### Python
 
 - Install dependencies:
 
-```bash
-  pip install -r requirements.txt
+```
+   pip install -r requirements.txt
 ```
 
-- Generate plot:
+- Generate analysis and plot:
 
-```bash
-  python plot.py
 ```
-
----
+   python analyze.py
+```
 
 ## 🔧 Configuration
 
-| Argument              | Default | Description                           |
-| --------------------- | ------- | ------------------------------------- |
-| `--num_records`       | 100     | Total records to publish              |
-| `--stop_fraction`     | 0.9     | Fraction of churned records to stop   |
-| `--ttl_s`             | 604800  | TTL for each record (seconds)         |
-| `--sleep_duration_ms` | 1000    | Sleep between resolves (milliseconds) |
+| Argument              | Default | Description                                    |
+| --------------------- | ------- | ---------------------------------------------- |
+| `--num-records`       | 100     | Total records to publish                       |
+| `--stop-fraction`     | 0.9     | Fraction of churned records to stop            |
+| `--max-hours`         | 12      | Max hours to stop collecting data              |
+| `--ttl-s`             | 604800  | TTL for each record (seconds)                  |
+| `--sleep-duration-ms` | 1000    | Sleep duration between resolves (milliseconds) |
 
 ## 📈 Output
 
 - **Churn Data:** `churns.csv`
-- **Visualization:** `churn_distribution.png`
+- **Analysis & Visualization:** `survival_plot.png`  
+  Additionally, key metrics (mean lifetime, half-life, hourly survival probability, and 95% CI) are printed to the terminal.
 
 ## 💡 Notes
 
 - Results may vary due to network conditions.
-- We determine a pkarr record is not resolvable on the first `None`.
-- Non-churned records are logged with `time_s = 0`.
+- A pkarr record is considered non-resolvable upon the first occurrence of `None`.
+- Non-churned records are logged with `time_s = 0` (and treated as right-censored in analysis).
 
 ## 📜 License
 
