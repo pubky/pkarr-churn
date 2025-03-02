@@ -21,5 +21,9 @@ name = "publish"
 path = "src/publish.rs"
 
 [[bin]]
+name = "publish_speedtest"
+path = "src/publish_speedtest.rs"
+
+[[bin]]
 name = "resolve"
 path = "src/resolve.rs"

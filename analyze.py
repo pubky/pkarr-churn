@@ -41,7 +41,7 @@ def main():
     sns.set(style="whitegrid")
 
     # Read CSV data
-    df = pd.read_csv("churns_500_4.csv")
+    df = pd.read_csv("churns_good.csv")
     # Ensure time_s is numeric
     df["time_s"] = pd.to_numeric(df["time_s"], errors="raise")
 
