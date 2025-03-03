@@ -1,18 +1,20 @@
 //! Publish and save the published public keys in a file
 //! so they can be reused in other experiments.
-//! 
+//!
 //! Run with `cargo run --bin main_publish_and_save`.
 
 use clap::Parser;
 
-use helpers::count_dht_nodes_storing_packet;
+use helpers::{count_dht_nodes_storing_packet, publish_records};
 use pkarr::Client;
 use published_key::PublishedKey;
+use tokio::time::sleep;
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
-    }, time::Duration,
+    },
+    time::Duration,
 };
 use tracing::{error, info, level_filters::LevelFilter};
 use tracing_subscriber::EnvFilter;
@@ -26,6 +28,10 @@ struct Cli {
     /// Number of records to publish
     #[arg(long, default_value_t = 100)]
     num_records: usize,
+
+    /// Number of parallel threads
+    #[arg(long, default_value_t = 1)]
+    threads: usize,
 }
 
 #[tokio::main]
@@ -51,43 +57,38 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     info!("Publish {} records", cli.num_records);
-    let published_keys = publish_records(cli.num_records, &ctrlc_pressed).await;
+    let published_keys = publish_parallel(cli.num_records, cli.threads, &ctrlc_pressed).await;
 
     // Turn into a hex list and write to file
-    let pubkeys = published_keys.into_iter().map(|key| {
-        let secret = key.key.secret_key();
-        let h = hex::encode(secret);
-        h
-    }).collect::<Vec<_>>();
-    let pubkeys_str = pubkeys.join("\n");
-    std::fs::write("published_secrets.txt", pubkeys_str).unwrap();
-    println!("Successfully wrote secrets keys to published_secrets.txt");
+    // let pubkeys = published_keys.into_iter().map(|key| {
+    //     let secret = key.key.secret_key();
+    //     let h = hex::encode(secret);
+    //     h
+    // }).collect::<Vec<_>>();
+    // let pubkeys_str = pubkeys.join("\n");
+    // std::fs::write("published_secrets.txt", pubkeys_str).unwrap();
+    // println!("Successfully wrote secrets keys to published_secrets.txt");
     Ok(())
 }
 
-/// Publish x packets
-async fn publish_records(num_records: usize, ctrlc_pressed: &Arc<AtomicBool>) -> Vec<PublishedKey> {
-    let client = Client::builder().no_relays().cache_size(0).build().unwrap();
-    let dht = mainline::Dht::client().unwrap();
-    let mut records = vec![];
+async fn publish_parallel(num_records: usize, threads: usize, ctrlc_pressed: &Arc<AtomicBool>) {
+    let mut handles = vec![];
+    for thread_id in 0..threads {
+        let handle = tokio::spawn(async move {
+            tracing::info!("Started thread t{thread_id}");
+            publish_records(num_records / threads, thread_id).await
+        });
+        handles.push(handle);
+    }
 
-    for i in 0..num_records {
-        let key = PublishedKey::random();
-        let packet = key.create_packet();
-        if let Err(e) = client.publish(&packet, None).await {
-            error!("Failed to publish {} record: {e:?}", key.public_key());
-            continue;
+    loop {
+       let all_finished = handles.iter().map(|handle| handle.is_finished()).reduce(|a, b| a && b).unwrap();
+       if all_finished {
+            break
         }
-        let found_count = count_dht_nodes_storing_packet(&key.public_key(), &dht);
-        info!("- {i}/{num_records} Published {} on {found_count} nodes", key.public_key());
-        records.push(key);
-        tokio::time::sleep(Duration::from_secs(5)).await;
-
         if ctrlc_pressed.load(Ordering::Relaxed) {
             break
         }
+        sleep(Duration::from_millis(500)).await;
     }
-    records
 }
-
-
