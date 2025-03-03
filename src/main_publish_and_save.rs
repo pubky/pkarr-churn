@@ -5,14 +5,14 @@
 
 use clap::Parser;
 
+use helpers::count_dht_nodes_storing_packet;
 use pkarr::Client;
 use published_key::PublishedKey;
 use std::{
-    process::exit,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
-    },
+    }, time::Duration,
 };
 use tracing::{error, info, level_filters::LevelFilter};
 use tracing_subscriber::EnvFilter;
@@ -24,7 +24,7 @@ mod published_key;
 #[command(author, version, about)]
 struct Cli {
     /// Number of records to publish
-    #[arg(long, default_value_t = 50)]
+    #[arg(long, default_value_t = 100)]
     num_records: usize,
 }
 
@@ -67,7 +67,8 @@ async fn main() -> anyhow::Result<()> {
 
 /// Publish x packets
 async fn publish_records(num_records: usize, ctrlc_pressed: &Arc<AtomicBool>) -> Vec<PublishedKey> {
-    let client = Client::builder().no_relays().build().unwrap();
+    let client = Client::builder().no_relays().cache_size(0).build().unwrap();
+    let dht = mainline::Dht::client().unwrap();
     let mut records = vec![];
 
     for i in 0..num_records {
@@ -77,8 +78,10 @@ async fn publish_records(num_records: usize, ctrlc_pressed: &Arc<AtomicBool>) ->
             error!("Failed to publish {} record: {e:?}", key.public_key());
             continue;
         }
-        info!("- {i}/{num_records} Published {}", key.public_key());
+        let found_count = count_dht_nodes_storing_packet(&key.public_key(), &dht);
+        info!("- {i}/{num_records} Published {} on {found_count} nodes", key.public_key());
         records.push(key);
+        tokio::time::sleep(Duration::from_secs(5)).await;
 
         if ctrlc_pressed.load(Ordering::Relaxed) {
             break
@@ -86,3 +89,5 @@ async fn publish_records(num_records: usize, ctrlc_pressed: &Arc<AtomicBool>) ->
     }
     records
 }
+
+

@@ -1,5 +1,7 @@
 use pkarr::{Keypair, PublicKey, SignedPacket, Timestamp};
 
+
+#[derive(Debug, Clone)]
 pub struct PublishedKey {
     pub key: Keypair,
     pub created_at: Timestamp,
