@@ -60,18 +60,18 @@ async fn main() -> anyhow::Result<()> {
     let published_keys = publish_parallel(cli.num_records, cli.threads, &ctrlc_pressed).await;
 
     // Turn into a hex list and write to file
-    // let pubkeys = published_keys.into_iter().map(|key| {
-    //     let secret = key.key.secret_key();
-    //     let h = hex::encode(secret);
-    //     h
-    // }).collect::<Vec<_>>();
-    // let pubkeys_str = pubkeys.join("\n");
-    // std::fs::write("published_secrets.txt", pubkeys_str).unwrap();
-    // println!("Successfully wrote secrets keys to published_secrets.txt");
+    let pubkeys = published_keys.into_iter().map(|key| {
+        let secret = key.key.secret_key();
+        let h = hex::encode(secret);
+        h
+    }).collect::<Vec<_>>();
+    let pubkeys_str = pubkeys.join("\n");
+    std::fs::write("published_secrets.txt", pubkeys_str).unwrap();
+    println!("Successfully wrote secrets keys to published_secrets.txt");
     Ok(())
 }
 
-async fn publish_parallel(num_records: usize, threads: usize, ctrlc_pressed: &Arc<AtomicBool>) {
+async fn publish_parallel(num_records: usize, threads: usize, ctrlc_pressed: &Arc<AtomicBool>) -> Vec<PublishedKey> {
     let mut handles = vec![];
     for thread_id in 0..threads {
         let handle = tokio::spawn(async move {
@@ -89,6 +89,14 @@ async fn publish_parallel(num_records: usize, threads: usize, ctrlc_pressed: &Ar
         if ctrlc_pressed.load(Ordering::Relaxed) {
             break
         }
-        sleep(Duration::from_millis(500)).await;
+        sleep(Duration::from_millis(250)).await;
     }
+
+    let mut all_result = vec![];
+    for handle in handles {
+        let keys = handle.await.unwrap();
+        all_result.extend(keys);
+    }
+
+    all_result
 }
