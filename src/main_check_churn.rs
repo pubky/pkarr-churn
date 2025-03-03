@@ -85,6 +85,7 @@ async fn run_churn_loop(
     client.clone().as_async().bootstrapped().await;
     let all_keys_count = all_keys.len();
     let mut rng = rng();
+    all_keys.shuffle(&mut rng);
     loop {
 
         let churn_count = all_keys.iter().filter(|key| key.is_churned()).count();
@@ -106,7 +107,6 @@ async fn run_churn_loop(
             if ctrlc_pressed.load(Ordering::Relaxed) {
                 break;
             }
-            tokio::time::sleep(Duration::from_millis(200)).await;
         }
 
         all_keys.shuffle(&mut rng);
