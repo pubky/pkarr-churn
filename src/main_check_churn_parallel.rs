@@ -144,10 +144,10 @@ async fn check_chunks(mut chunk: Vec<PublishedKey>, thread_id: usize) {
         let nodes_count = count_dht_nodes_storing_packet(pubkey, &client).await;
         // Try to resolve the key.
         if nodes_count > 0 {
-            info!("- t{thread_id:>3} {i:<2}/{} Key {pubkey} is resolvable on {nodes_count} nodes.", keys_count);
+            info!("- t{thread_id:<3} {i:>2}/{} Key {pubkey} is resolvable on {nodes_count} nodes.", keys_count);
             key.mark_as_available();
         } else {
-            info!("- t{thread_id:>3} {i:<2}/{} Key {pubkey} unresolved", keys_count);
+            info!("- t{thread_id:<3} {i:>2}/{} Key {pubkey} unresolved", keys_count);
             key.mark_as_churned();
         }
     }
