@@ -31,7 +31,7 @@ pub async fn count_dht_nodes_storing_packet(pubkey: &PublicKey, client: Dht) -> 
 pub async fn publish_records(num_records: usize, thread_id: usize) -> Vec<PublishedKey> {
     let client = Client::builder().no_relays().build().unwrap();
     let dht = client.dht().unwrap();
-    dht.bootstrapped();
+    dht.as_async().bootstrapped().await;
     let mut records = vec![];
 
     for i in 0..num_records {

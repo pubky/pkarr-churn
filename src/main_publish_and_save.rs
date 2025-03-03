@@ -87,9 +87,14 @@ async fn publish_parallel(num_records: usize, threads: usize, ctrlc_pressed: &Ar
             break
         }
         if ctrlc_pressed.load(Ordering::Relaxed) {
+
             break
         }
         sleep(Duration::from_millis(250)).await;
+    }
+
+    if ctrlc_pressed.load(Ordering::Relaxed) {
+        process::exit(0);
     }
 
     let mut all_result = vec![];
@@ -99,10 +104,6 @@ async fn publish_parallel(num_records: usize, threads: usize, ctrlc_pressed: &Ar
     }
 
     tracing::info!("Published {} keys in {} seconds", all_result.len(), start.elapsed().as_secs());
-
-    if ctrlc_pressed.load(Ordering::Relaxed) {
-        process::exit(0);
-    }
 
     all_result
 }
