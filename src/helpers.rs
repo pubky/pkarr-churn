@@ -32,6 +32,7 @@ pub async fn publish_records(num_records: usize, thread_id: usize) -> Vec<Publis
     let client = Client::builder().no_relays().build().unwrap();
     let dht = client.dht().unwrap();
     dht.clone().as_async().bootstrapped().await;
+    tracing::info!("DHT client id: {}", dht.info().id());
     let mut records = vec![];
 
     for i in 0..num_records {
