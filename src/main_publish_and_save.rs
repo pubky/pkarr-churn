@@ -60,9 +60,10 @@ async fn main() -> anyhow::Result<()> {
     println!("Press Ctrl+C to stop...");
 
     let cli = Cli::parse();
-
-    info!("Publish {} records", cli.num_records);
-    let published_keys = publish_parallel(cli.num_records, cli.threads, cli.verify > 0, &ctrlc_pressed).await;
+    
+    let should_verify = cli.verify > 0;
+    info!("Publish {} records. Verify: {should_verify}", cli.num_records);
+    let published_keys = publish_parallel(cli.num_records, cli.threads, should_verify, &ctrlc_pressed).await;
 
     // Turn into a hex list and write to file
     let pubkeys = published_keys
