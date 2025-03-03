@@ -9,14 +9,20 @@ use crate::published_key::PublishedKey;
 
 /// Queries the public key and returns how many nodes responded with the packet.
 pub async fn count_dht_nodes_storing_packet(pubkey: &PublicKey, client: &Dht) -> u8 {
-    let stream = client.get_mutable(pubkey.as_bytes(), None, None);
-    let mut response_count: u8 = 0;
+    let c = client.clone();
+    let p = pubkey.clone();
+    let handle = tokio::task::spawn_blocking(move || {
+        let stream = c.get_mutable(p.as_bytes(), None, None);
+        let mut response_count: u8 = 0;
+    
+        for _ in stream {
+            response_count += 1;
+        }
+    
+        response_count
+    });
 
-    for _ in stream {
-        response_count += 1;
-    }
-
-    response_count
+    handle.await.unwrap()
 }
 
 
@@ -35,8 +41,8 @@ pub async fn publish_records(num_records: usize, thread_id: usize) -> Vec<Publis
             continue;
         }
         let publish_time = instant.elapsed().as_millis();
-        // let found_count = count_dht_nodes_storing_packet(&key.public_key(), &dht).await;
-        tracing::info!("- t{thread_id} {i}/{num_records} Published {} nodes within {publish_time}ms", key.public_key());
+        let found_count = count_dht_nodes_storing_packet(&key.public_key(), &dht).await;
+        tracing::info!("- t{thread_id} {i}/{num_records} Published {} on {found_count} nodes within {publish_time}ms", key.public_key());
         records.push(key);
 
         // if ctrlc_pressed.load(Ordering::Relaxed) {
