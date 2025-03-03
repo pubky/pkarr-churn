@@ -903,26 +903,6 @@ checksum = "227748d55f2f0ab4735d87fd623798cb6b664512fe979705f829c9f81c934465"
 [[package]]
 name = "mainline"
 version = "5.3.1"
-dependencies = [
- "crc",
- "document-features",
- "dyn-clone",
- "ed25519-dalek",
- "flume",
- "futures-lite",
- "getrandom 0.2.15",
- "lru",
- "serde",
- "serde_bencode",
- "serde_bytes",
- "sha1_smol",
- "thiserror",
- "tracing",
-]
-
-[[package]]
-name = "mainline"
-version = "5.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2fae24c3d129b92c8cfea92a9e2014052371a2835e4a6d66dfdb00238e389e56"
 dependencies = [
@@ -1106,7 +1086,7 @@ dependencies = [
  "getrandom 0.2.15",
  "log",
  "lru",
- "mainline 5.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "mainline",
  "ntimestamp",
  "reqwest",
  "self_cell",
@@ -1129,7 +1109,7 @@ dependencies = [
  "ctrlc",
  "getrandom 0.3.1",
  "hex",
- "mainline 5.3.1",
+ "mainline",
  "pkarr",
  "rand 0.9.0",
  "tokio",
