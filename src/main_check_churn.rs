@@ -16,7 +16,7 @@
 
 
 use helpers::count_dht_nodes_storing_packet;
-use mainline::Dht;
+use mainline::{Dht, DhtBuilder};
 use pkarr::Keypair;
 use published_key::PublishedKey;
 use std::{
@@ -81,7 +81,7 @@ async fn run_churn_loop(
     mut all_keys: Vec<PublishedKey>,
     ctrlc_pressed: &Arc<AtomicBool>,
 ) -> Vec<PublishedKey> {
-    let client = Dht::client().unwrap();
+    let client = DhtBuilder::default().request_timeout(Duration::from_millis(1000)).build().unwrap();
     client.clone().as_async().bootstrapped().await;
     let all_keys_count = all_keys.len();
     let mut rng = rng();
