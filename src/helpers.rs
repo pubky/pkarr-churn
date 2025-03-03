@@ -42,7 +42,7 @@ pub async fn publish_records(num_records: usize, thread_id: usize) -> Vec<Publis
         }
         let publish_time = instant.elapsed().as_millis();
         let found_count = count_dht_nodes_storing_packet(&key.public_key(), &dht).await;
-        tracing::info!("- t{thread_id} {i}/{num_records} Published {} on {found_count} nodes within {publish_time}ms", key.public_key());
+        tracing::info!("- t{thread_id:<2} {i:>3}/{num_records} Published {} on {found_count:<2} nodes within {publish_time}ms", key.public_key());
         records.push(key);
 
         // if ctrlc_pressed.load(Ordering::Relaxed) {
