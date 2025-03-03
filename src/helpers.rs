@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use mainline::Dht;
 use pkarr::{Client, PublicKey};
 use tokio::time::{sleep, Instant};
@@ -44,7 +46,7 @@ pub async fn publish_records(num_records: usize, thread_id: usize) -> Vec<Publis
         let found_count = count_dht_nodes_storing_packet(&key.public_key(), dht.clone()).await;
         tracing::info!("- t{thread_id:<2} {i:>3}/{num_records} Published {} on {found_count:<2} nodes within {publish_time}ms", key.public_key());
         records.push(key);
-        sleep(duration::Duration::from_millis(100)).await;
+        sleep(Duration::from_millis(50)).await;
 
     }
     records
