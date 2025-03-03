@@ -13,7 +13,7 @@ use tokio::time::sleep;
 #[command(author, version, about)]
 struct Cli {
     /// Number of records to publish
-    #[arg(long, default_value_t = 20)]
+    #[arg(long, default_value_t = 1024)]
     num_records: usize,
 
     /// Stop after this fraction of records cannot be resolved (0.0 < x <= 1.0)
@@ -25,11 +25,11 @@ struct Cli {
     ttl_s: u32,
 
     /// Sleep duration (in milliseconds) between successive checks
-    #[arg(long, default_value_t = 1000)]
+    #[arg(long, default_value_t = 3000)]
     sleep_duration_ms: u64,
 
     /// Maximum duration (in hours) for the churn monitoring phase
-    #[arg(long, default_value_t = 1)]
+    #[arg(long, default_value_t = 200)]
     max_hours: u64,
 }
 
@@ -42,35 +42,39 @@ async fn main() -> anyhow::Result<()> {
         .no_relays()
         .build()?;
 
-    // Acquire the DHT client from mainline and bootstrap it.
+    // Obtain and bootstrap the DHT client.
     let dht = client.dht().unwrap();
     dht.clone().as_async().bootstrapped().await;
 
-    // Publish the records and record the publication timestamp.
+    // Publish records into the DHT.
     let published_records = publish_records(&client, cli.num_records, cli.ttl_s).await;
     println!("Published {} records.", published_records.len());
 
-    // Wait one minute before starting churn monitoring.
     println!("Waiting one minute before starting churn monitoring.");
     sleep(Duration::from_secs(60)).await;
 
-    // Open CSV files:
-    // nodes_decay.csv: logs timestamp (s), pubkey, and current node count whenever it changes.
+    // Open CSV files.
+
+    // 1. nodes_decay.csv: Logs changes for individual keys.
     let nodes_file = File::create("nodes_decay.csv")?;
     let mut nodes_writer = BufWriter::new(nodes_file);
     writeln!(nodes_writer, "timestamp_s,pubkey,nodes_count")?;
 
-    // churns.csv: logs when a key goes unresolved (i.e. nodes count becomes 0).
+    // 2. churns.csv: Logs when a key goes unresolved (nodes count becomes 0).
     let churn_file = File::create("churns.csv")?;
     let mut churn_writer = BufWriter::new(churn_file);
     writeln!(churn_writer, "pubkey,churn_time_s")?;
 
-    // A HashMap to track the last known node count for each key.
+    // 3. nodes_storing.csv: Logs the total global number of nodes across all keys whenever it decreases.
+    let nodes_storing_file = File::create("nodes_storing.csv")?;
+    let mut nodes_storing_writer = BufWriter::new(nodes_storing_file);
+    writeln!(nodes_storing_writer, "node_count,timestamp")?;
+
+    // Track the last known node count per key.
     let mut last_nodes_count: HashMap<PublicKey, u8> = HashMap::new();
 
     let max_duration = Duration::from_secs(cli.max_hours * 3600);
     run_churn_loop(
-        client,
         dht,
         published_records,
         cli.stop_fraction,
@@ -79,6 +83,7 @@ async fn main() -> anyhow::Result<()> {
         &mut nodes_writer,
         &mut last_nodes_count,
         &mut churn_writer,
+        &mut nodes_storing_writer,
     )
     .await?;
 
@@ -124,10 +129,11 @@ async fn publish_records(
 
 /// The churn loop monitors every published record and, for each one:
 /// - Queries how many nodes (using `count_dht_nodes_storing_packet`) currently store its packet.
-/// - Logs (with a timestamp) any change in the number of nodes to "nodes_decay.csv".
+/// - Logs any change in the per-key node count to "nodes_decay.csv".
 /// - Marks a key as churned (and logs it to "churns.csv") when its node count falls to 0.
+/// - Additionally, calculates the global total number of nodes across all keys and,
+///   whenever that total decreases, logs the new total and timestamp to "nodes_storing.csv".
 async fn run_churn_loop(
-    client: Client,
     dht: Dht,
     verified_records: Vec<(PublicKey, Instant)>,
     stop_fraction: f64,
@@ -136,10 +142,12 @@ async fn run_churn_loop(
     nodes_writer: &mut BufWriter<File>,
     last_nodes_count: &mut HashMap<PublicKey, u8>,
     churn_writer: &mut BufWriter<File>,
+    nodes_storing_writer: &mut BufWriter<File>,
 ) -> anyhow::Result<()> {
     let total_keys = verified_records.len();
     let mut potential_churn: HashMap<PublicKey, Instant> = HashMap::new();
     let churn_start = Instant::now();
+    let mut last_global_count: Option<u32> = None;
 
     while churn_start.elapsed() < max_duration {
         println!(
@@ -147,13 +155,14 @@ async fn run_churn_loop(
             potential_churn.len()
         );
 
+        // Process each key.
         for (pubkey, publish_instant) in &verified_records {
             sleep(Duration::from_millis(sleep_duration_ms)).await;
 
             // Query the current number of nodes storing the packet.
             let nodes_count = count_dht_nodes_storing_packet(pubkey, &dht).await;
 
-            // If the node count has changed since the last check, log the update.
+            // If the per-key node count changed, log the update.
             let record_changed = match last_nodes_count.get(pubkey) {
                 Some(&last) => last != nodes_count,
                 None => true,
@@ -186,6 +195,22 @@ async fn run_churn_loop(
             }
         }
 
+        // Compute the global node count across all keys.
+        let current_global_count: u32 = last_nodes_count.values().map(|&v| v as u32).sum();
+        // If the global count decreased, log the new total.
+        if let Some(prev) = last_global_count {
+            if current_global_count < prev {
+                let timestamp = churn_start.elapsed().as_secs();
+                writeln!(nodes_storing_writer, "{current_global_count},{timestamp}")?;
+                nodes_storing_writer.flush()?;
+                println!(
+                    "Global node count decreased from {} to {} at {} seconds.",
+                    prev, current_global_count, timestamp
+                );
+            }
+        }
+        last_global_count = Some(current_global_count);
+
         let churn_fraction = potential_churn.len() as f64 / total_keys as f64;
         println!("Current churn fraction: {:.2}%", churn_fraction * 100.0);
 
@@ -202,7 +227,7 @@ async fn run_churn_loop(
 }
 
 /// Asynchronous helper to count the number of DHT nodes storing a given packet.
-/// This uses a blocking task to iterate over the responses returned by `dht.get_mutable()`.
+/// This spawns a blocking task to iterate over the responses returned by `dht.get_mutable()`.
 pub async fn count_dht_nodes_storing_packet(pubkey: &PublicKey, client: &Dht) -> u8 {
     let dht_clone = client.clone();
     let pubkey_clone = pubkey.clone();
