@@ -120,8 +120,9 @@ async fn publish_parallel(
         all_result.extend(keys);
     }
 
+    let rate = all_result.len() as f64 / start.elapsed().as_secs() as f64;
     tracing::info!(
-        "Published {} keys in {} seconds",
+        "Published {} keys in {} seconds at {rate:.2} keys/s",
         all_result.len(),
         start.elapsed().as_secs()
     );

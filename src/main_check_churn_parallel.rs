@@ -127,7 +127,8 @@ async fn run_churn_loop(
     }
 
     let passed = start.elapsed().as_secs();
-    tracing::info!("Resolved {all_keys_count} keys in {passed}s");
+    let rate = all_keys_count as f64 / passed as f64;
+    tracing::info!("Resolved {all_keys_count} keys in {passed}s at {rate:.2} keys/s");
 
     if ctrlc_pressed.load(Ordering::Relaxed) {
         std::process::exit(0);
