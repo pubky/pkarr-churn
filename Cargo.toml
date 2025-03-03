@@ -31,13 +31,6 @@ name = "main_check_churn"
 path = "src/main_check_churn.rs"
 
 [[bin]]
-name = "main_check_churn_simple"
-path = "src/main_check_churn_simple.rs"
+name = "main_check_churn_parallel"
+path = "src/main_check_churn_parallel.rs"
 
-[[bin]]
-name = "main_ar_publish"
-path = "src/main_ar_publish.rs"
-
-[[bin]]
-name = "main_ar_resolve"
-path = "src/main_ar_resolve.rs"

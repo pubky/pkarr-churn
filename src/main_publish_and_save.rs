@@ -5,8 +5,7 @@
 
 use clap::Parser;
 
-use helpers::{count_dht_nodes_storing_packet, publish_records};
-use pkarr::Client;
+use helpers::publish_records;
 use published_key::PublishedKey;
 use std::{
     process,
