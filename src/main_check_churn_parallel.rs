@@ -20,7 +20,7 @@ use helpers::count_dht_nodes_storing_packet;
 use mainline::{Dht, DhtBuilder};
 use pkarr::Keypair;
 use published_key::PublishedKey;
-use tokio::time::sleep;
+use tokio::time::{sleep, Instant};
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -110,6 +110,7 @@ async fn run_churn_loop(
         handles.push(handle);
     };
 
+    let start = Instant::now();
     loop {
         let all_finished = handles
             .iter()
@@ -124,6 +125,9 @@ async fn run_churn_loop(
         }
         sleep(Duration::from_millis(250)).await;
     }
+
+    let passed = start.elapsed().as_secs();
+    tracing::info!("Resolved {all_keys_count} keys in {passed}s");
 
     if ctrlc_pressed.load(Ordering::Relaxed) {
         std::process::exit(0);
