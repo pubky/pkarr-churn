@@ -26,7 +26,8 @@ pub async fn count_dht_nodes_storing_packet(pubkey: &PublicKey, client: Dht) -> 
 
 
 // Publishes x number of packets. Checks if they are actually available
-pub async fn publish_records(num_records: usize, thread_id: usize, client: Client) -> Vec<PublishedKey> {
+pub async fn publish_records(num_records: usize, thread_id: usize) -> Vec<PublishedKey> {
+    let client = Client::builder().no_relays().build().unwrap();
     let dht = client.dht().unwrap();
     dht.bootstrapped();
     let mut records = vec![];

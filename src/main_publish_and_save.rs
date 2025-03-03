@@ -72,13 +72,11 @@ async fn main() -> anyhow::Result<()> {
 
 async fn publish_parallel(num_records: usize, threads: usize, ctrlc_pressed: &Arc<AtomicBool>) -> Vec<PublishedKey> {
     let start = Instant::now();
-    let client = Client::builder().no_relays().cache_size(0).build().unwrap();
     let mut handles = vec![];
     for thread_id in 0..threads {
-        let c = client.clone();
         let handle = tokio::spawn(async move {
             tracing::info!("Started thread t{thread_id}");
-            publish_records(num_records / threads, thread_id, c).await
+            publish_records(num_records / threads, thread_id).await
         });
         handles.push(handle);
     }
