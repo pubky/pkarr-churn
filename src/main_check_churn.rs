@@ -100,7 +100,7 @@ async fn run_churn_loop(
 
         for (i, key) in all_keys.iter_mut().enumerate() {
             let pubkey = &key.public_key();
-            let nodes_count = count_dht_nodes_storing_packet(pubkey, &client);
+            let nodes_count = count_dht_nodes_storing_packet(pubkey, &client).await;
             // Try to resolve the key.
             if nodes_count > 0 {
                 info!("- {i}/{all_keys_count} Key {pubkey} is resolvable on {nodes_count} nodes.");
