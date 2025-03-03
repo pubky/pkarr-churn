@@ -10,11 +10,10 @@ use pkarr::Client;
 use published_key::PublishedKey;
 use tokio::time::sleep;
 use std::{
-    sync::{
+    process, sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
-    },
-    time::Duration,
+    }, time::Duration
 };
 use tracing::{error, info, level_filters::LevelFilter};
 use tracing_subscriber::EnvFilter;
@@ -90,6 +89,10 @@ async fn publish_parallel(num_records: usize, threads: usize, ctrlc_pressed: &Ar
             break
         }
         sleep(Duration::from_millis(250)).await;
+    }
+
+    if ctrlc_pressed.load(Ordering::Relaxed) {
+        process::exit(0);
     }
 
     let mut all_result = vec![];
