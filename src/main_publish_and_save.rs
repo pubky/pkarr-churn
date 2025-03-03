@@ -13,7 +13,7 @@ use std::{
     process, sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
-    }, time::Duration
+    }, time::{Duration, Instant}
 };
 use tracing::{error, info, level_filters::LevelFilter};
 use tracing_subscriber::EnvFilter;
@@ -71,6 +71,7 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn publish_parallel(num_records: usize, threads: usize, ctrlc_pressed: &Arc<AtomicBool>) -> Vec<PublishedKey> {
+    let start = Instant::now();
     let mut handles = vec![];
     for thread_id in 0..threads {
         let handle = tokio::spawn(async move {
@@ -91,14 +92,16 @@ async fn publish_parallel(num_records: usize, threads: usize, ctrlc_pressed: &Ar
         sleep(Duration::from_millis(250)).await;
     }
 
-    if ctrlc_pressed.load(Ordering::Relaxed) {
-        process::exit(0);
-    }
-
     let mut all_result = vec![];
     for handle in handles {
         let keys = handle.await.unwrap();
         all_result.extend(keys);
+    }
+
+    tracing::info!("Published {} keys in {} seconds", all_result.len(), start.elapsed().as_secs());
+
+    if ctrlc_pressed.load(Ordering::Relaxed) {
+        process::exit(0);
     }
 
     all_result
