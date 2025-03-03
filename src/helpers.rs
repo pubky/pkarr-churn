@@ -28,7 +28,7 @@ pub async fn count_dht_nodes_storing_packet(pubkey: &PublicKey, client: &Dht) ->
 
 
 // Publishes x number of packets. Checks if they are actually available
-pub async fn publish_records(num_records: usize, thread_id: usize) -> Vec<PublishedKey> {
+pub async fn publish_records(num_records: usize, thread_id: usize, verify: bool) -> Vec<PublishedKey> {
     let client = Client::builder().no_relays().build().unwrap();
     let dht = client.dht().unwrap();
     dht.clone().as_async().bootstrapped().await;
@@ -44,11 +44,14 @@ pub async fn publish_records(num_records: usize, thread_id: usize) -> Vec<Publis
             continue;
         }
         let publish_time = instant.elapsed().as_millis();
-        let found_count = count_dht_nodes_storing_packet(&key.public_key(), &dht).await;
-        tracing::info!("- t{thread_id:<2} {i:>3}/{num_records} Published {} on {found_count:<2} nodes within {publish_time}ms", key.public_key());
-        records.push(key);
-        sleep(Duration::from_millis(50)).await;
+        if verify {
+            let found_count = count_dht_nodes_storing_packet(&key.public_key(), &dht).await;
+            tracing::info!("- t{thread_id:<2} {i:>3}/{num_records} Published {} on {found_count:<2} nodes within {publish_time}ms", key.public_key());
+        } else {
+            tracing::info!("- t{thread_id:<2} {i:>3}/{num_records} Published {} within {publish_time}ms", key.public_key());
+        }
 
+        records.push(key);
     }
     records
 }

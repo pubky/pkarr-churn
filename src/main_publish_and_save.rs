@@ -8,14 +8,16 @@ use clap::Parser;
 use helpers::{count_dht_nodes_storing_packet, publish_records};
 use pkarr::Client;
 use published_key::PublishedKey;
-use tokio::time::sleep;
 use std::{
-    process, sync::{
+    process,
+    sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
-    }, time::{Duration, Instant}
+    },
+    time::{Duration, Instant},
 };
-use tracing::{error, info, level_filters::LevelFilter};
+use tokio::time::sleep;
+use tracing::{info, level_filters::LevelFilter};
 use tracing_subscriber::EnvFilter;
 
 mod helpers;
@@ -31,6 +33,10 @@ struct Cli {
     /// Number of parallel threads
     #[arg(long, default_value_t = 1)]
     threads: usize,
+
+    /// Verify how many nodes stored the value
+    #[arg(long, default_value_t = true)]
+    verify: bool,
 }
 
 #[tokio::main]
@@ -56,39 +62,50 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     info!("Publish {} records", cli.num_records);
-    let published_keys = publish_parallel(cli.num_records, cli.threads, &ctrlc_pressed).await;
+    let published_keys = publish_parallel(cli.num_records, cli.threads, cli.verify, &ctrlc_pressed).await;
 
     // Turn into a hex list and write to file
-    let pubkeys = published_keys.into_iter().map(|key| {
-        let secret = key.key.secret_key();
-        let h = hex::encode(secret);
-        h
-    }).collect::<Vec<_>>();
+    let pubkeys = published_keys
+        .into_iter()
+        .map(|key| {
+            let secret = key.key.secret_key();
+            let h = hex::encode(secret);
+            h
+        })
+        .collect::<Vec<_>>();
     let pubkeys_str = pubkeys.join("\n");
     std::fs::write("published_secrets.txt", pubkeys_str).unwrap();
     println!("Successfully wrote secrets keys to published_secrets.txt");
     Ok(())
 }
 
-async fn publish_parallel(num_records: usize, threads: usize, ctrlc_pressed: &Arc<AtomicBool>) -> Vec<PublishedKey> {
+async fn publish_parallel(
+    num_records: usize,
+    threads: usize,
+    verify: bool,
+    ctrlc_pressed: &Arc<AtomicBool>,
+) -> Vec<PublishedKey> {
     let start = Instant::now();
     let mut handles = vec![];
     for thread_id in 0..threads {
         let handle = tokio::spawn(async move {
             tracing::info!("Started thread t{thread_id}");
-            publish_records(num_records / threads, thread_id).await
+            publish_records(num_records / threads, thread_id, verify).await
         });
         handles.push(handle);
     }
 
     loop {
-       let all_finished = handles.iter().map(|handle| handle.is_finished()).reduce(|a, b| a && b).unwrap();
-       if all_finished {
-            break
+        let all_finished = handles
+            .iter()
+            .map(|handle| handle.is_finished())
+            .reduce(|a, b| a && b)
+            .unwrap();
+        if all_finished {
+            break;
         }
         if ctrlc_pressed.load(Ordering::Relaxed) {
-
-            break
+            break;
         }
         sleep(Duration::from_millis(250)).await;
     }
@@ -103,7 +120,11 @@ async fn publish_parallel(num_records: usize, threads: usize, ctrlc_pressed: &Ar
         all_result.extend(keys);
     }
 
-    tracing::info!("Published {} keys in {} seconds", all_result.len(), start.elapsed().as_secs());
+    tracing::info!(
+        "Published {} keys in {} seconds",
+        all_result.len(),
+        start.elapsed().as_secs()
+    );
 
     all_result
 }
