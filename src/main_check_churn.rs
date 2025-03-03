@@ -14,9 +14,9 @@
 //! - 33/35 Key nbg51dj1zaihn8o4dck1a31tcbkzksim787qxp17pohtd48w6aey is resolvable on 5 nodes.
 //! - 34/35 Key rcp8so4wikho7gbdqbw1smyo64cjkf7ktuwwhyzbksnx7ois44fo unresolved
 
-use clap::Parser;
+
 use helpers::count_dht_nodes_storing_packet;
-use mainline::{Dht, DhtBuilder};
+use mainline::Dht;
 use pkarr::Keypair;
 use published_key::PublishedKey;
 use std::{
@@ -33,13 +33,6 @@ use rand::rng;
 mod helpers;
 mod published_key;
 
-#[derive(Parser, Debug)]
-#[command(author, version, about)]
-struct Cli {
-    /// Number of records to publish
-    #[arg(long, default_value_t = 50)]
-    num_records: usize,
-}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -88,8 +81,8 @@ async fn run_churn_loop(
     mut all_keys: Vec<PublishedKey>,
     ctrlc_pressed: &Arc<AtomicBool>,
 ) -> Vec<PublishedKey> {
-    let mut client = Dht::client().unwrap();
-    client.bootstrapped();
+    let client = Dht::client().unwrap();
+    client.clone().as_async().bootstrapped().await;
     let all_keys_count = all_keys.len();
     let mut rng = rng();
     loop {
@@ -113,7 +106,7 @@ async fn run_churn_loop(
             if ctrlc_pressed.load(Ordering::Relaxed) {
                 break;
             }
-            tokio::time::sleep(Duration::from_secs(1)).await;
+            tokio::time::sleep(Duration::from_millis(200)).await;
         }
 
         all_keys.shuffle(&mut rng);

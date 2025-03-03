@@ -35,8 +35,8 @@ struct Cli {
     threads: usize,
 
     /// Verify how many nodes stored the value
-    #[arg(long, default_value_t = true)]
-    verify: bool,
+    #[arg(long, default_value_t = 1)]
+    verify: usize,
 }
 
 #[tokio::main]
@@ -62,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     info!("Publish {} records", cli.num_records);
-    let published_keys = publish_parallel(cli.num_records, cli.threads, cli.verify, &ctrlc_pressed).await;
+    let published_keys = publish_parallel(cli.num_records, cli.threads, cli.verify > 0, &ctrlc_pressed).await;
 
     // Turn into a hex list and write to file
     let pubkeys = published_keys
