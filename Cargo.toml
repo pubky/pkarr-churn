@@ -15,6 +15,7 @@ anyhow = "1"
 getrandom = "0.3.1"
 tracing = "0.1.41"
 tracing-subscriber = "0.3.19"
+mainline = "5.3.1"
 
 [[bin]]
 name = "publish"
@@ -23,6 +24,10 @@ path = "src/publish.rs"
 [[bin]]
 name = "publish_speedtest"
 path = "src/publish_speedtest.rs"
+
+[[bin]]
+name = "nodes_decay"
+path = "src/nodes_decay.rs"
 
 [[bin]]
 name = "resolve"
