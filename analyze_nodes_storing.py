@@ -43,7 +43,7 @@ def main():
     # ---------------------------
     # Data Preparation
     # ---------------------------
-    df = pd.read_csv("nodes_storing.csv")
+    df = pd.read_csv("nodes_storing_1.csv")
     df["timestamp"] = pd.to_numeric(df["timestamp"], errors="raise")
     df["node_count"] = pd.to_numeric(df["node_count"], errors="raise")
     
@@ -119,7 +119,7 @@ def main():
         "1 Month": 30 * 24 *60 * 60
         }
     # Replication counts to predict for.
-    replication_counts = [1, 2, 4, 10, 20, 50, 100, 1000]
+    replication_counts = [1, 2, 4, 10, 20, 50, 100, 1_000]
     
     prediction_table = []
     for n in replication_counts:
