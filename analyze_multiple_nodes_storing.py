@@ -97,7 +97,9 @@ def main():
     n_samples = len(lambda_array)
     
     # Compute t-based 95% CI for the Weibull parameters.
-    t_crit = t.ppf(0.975, df=n_samples - 1)
+    ci = 95 # 95% CI
+    ci_fraq = 1 - (1 - ci/100)/2 # ci_fraq
+    t_crit = t.ppf(ci_fraq, df=n_samples - 1)
     
     lambda_mean = np.mean(lambda_array)
     lambda_std = np.std(lambda_array, ddof=1)
@@ -110,11 +112,11 @@ def main():
     k_ci_upper = k_mean + t_crit * (k_std / np.sqrt(n_samples))
     
     summary_table = [
-        ["λ (scale)", f"Mean = {lambda_mean:.2f}", f"95% CI = [{lambda_ci_lower:.2f}, {lambda_ci_upper:.2f}]"],
-        ["k (shape)", f"Mean = {k_mean:.3f}", f"95% CI = [{k_ci_lower:.3f}, {k_ci_upper:.3f}]"]
+        ["λ (scale)", f"Mean = {lambda_mean:.2f}", f"{ci}% CI = [{lambda_ci_lower:.2f}, {lambda_ci_upper:.2f}]"],
+        ["k (shape)", f"Mean = {k_mean:.3f}", f"{ci}% CI = [{k_ci_lower:.3f}, {k_ci_upper:.3f}]"]
     ]
     print("Aggregated Weibull Parameter Estimates (Student's t-based):")
-    print(tabulate(summary_table, headers=["Parameter", "Mean", "95% CI"], tablefmt="pretty"))
+    print(tabulate(summary_table, headers=["Parameter", "Mean", f"{ci}% CI"], tablefmt="pretty"))
     print()
     
     # ---------------------------
@@ -154,29 +156,33 @@ def main():
     all_times = []
     for (file, df, lambd_weib, k_weib) in all_file_data:
         ax.step(df["time"], df["survival"], where="post", label=os.path.basename(file),
-                alpha=0.7, marker="o", markersize=4)
+                alpha=0.7, marker="o", markersize=3)  # slightly smaller markers
         all_times.extend(df["time"].tolist())
     max_time = max(all_times) if all_times else 0
-    t_vals = np.linspace(0, max_time, 200)
+    # Increase resolution by using 1000 points instead of 200
+    t_vals = np.linspace(0, max_time, 10000)
     master_fit = weibull_model(t_vals, lambda_mean, k_mean)
+    # Use thinner lines (e.g., linewidth=1.5 instead of 3)
     ax.plot(t_vals, master_fit, linestyle="--", color="black",
-            linewidth=3, label="Mean Weibull Fit")
+            linewidth=1.5, label="Mean Weibull Fit")
     worst_fit = weibull_model(t_vals, lambda_ci_lower, k_ci_upper)
-    ax.plot(t_vals, worst_fit, linestyle=":", color="red", linewidth=3, label="Worst-case 95% CI Fit")
+    ax.plot(t_vals, worst_fit, linestyle=":", color="red",
+            linewidth=1.5, label=f"Worst-case {ci}% CI Fit")
     # Annotate the master plot with the aggregated Weibull model formula.
     master_model_text = r'$S(t)=\exp\left[-\left(\frac{t}{%.2f}\right)^{%.3f}\right]$' % (lambda_mean, k_mean)
     ax.text(0.25, 0.95, master_model_text, transform=ax.transAxes,
             fontsize=16, verticalalignment='top',
             bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", lw=1))
-    
+        
     ax.set_xlabel("Time (s) [Relative]")
     ax.set_ylabel("Survival Probability")
     ax.set_title("Master Plot: All Files with Mean Weibull Model")
     ax.legend()
     sns.despine(trim=True)
-    
+
+    # Optionally, increase the output DPI for higher resolution:
     fig.tight_layout()
-    fig.savefig("node_storing_survival_master.png")
+    fig.savefig("node_storing_survival_master.png", dpi=300)
     plt.close(fig)
     
     # ---------------------------
@@ -201,7 +207,7 @@ def main():
                 p_multi = 1 - (1 - p_single)**n
                 predictions_dict[n][label].append(p_multi)
     
-    # Compute mean and t-based 95% CI for each prediction.
+    # Compute mean and t-based % CI for each prediction.
     prediction_table = []
     for n in replication_counts:
         row = [n]
@@ -210,7 +216,7 @@ def main():
             mean_pred = np.mean(p_vals)
             std_pred = np.std(p_vals, ddof=1)
             n_pred = len(p_vals)
-            t_crit_pred = t.ppf(0.975, df=n_pred - 1)
+            t_crit_pred = t.ppf(ci_fraq, df=n_pred - 1)
             ci_lower = mean_pred - t_crit_pred * (std_pred / np.sqrt(n_pred))
             ci_upper = mean_pred + t_crit_pred * (std_pred / np.sqrt(n_pred))
             # Ensure lower CI is not negative.
@@ -221,11 +227,11 @@ def main():
         prediction_table.append(row)
     
     headers = ["Replication Count"] + list(horizons.keys())
-    print("Predicted Survival Probabilities with Student's t-based 95% CI for Multiple Replications:")
+    print(f"Predicted Survival Probabilities with Student's t-based {ci}% CI for Multiple Replications:")
     print(tabulate(prediction_table, headers=headers, tablefmt="pretty"))
     
     # ---------------------------
-    # New Table: Lower 95% CI Intervals Only (with negative values capped at 0)
+    # New Table: Lower % CI Intervals Only (with negative values capped at 0)
     # ---------------------------
     lower_ci_table = []
     for n in replication_counts:
@@ -235,14 +241,14 @@ def main():
             std_pred = np.std(p_vals, ddof=1)
             mean_pred = np.mean(p_vals)
             n_pred = len(p_vals)
-            t_crit_pred = t.ppf(0.975, df=n_pred - 1)
+            t_crit_pred = t.ppf(ci_fraq, df=n_pred - 1)
             ci_lower = mean_pred - t_crit_pred * (std_pred / np.sqrt(n_pred))
             # Cap lower CI at 0 if negative.
             ci_lower = max(0, ci_lower)
             row.append(f"{ci_lower*100:.2f}%")
         lower_ci_table.append(row)
     
-    print("\nLower 95% CI Intervals for Predicted Survival Probabilities:")
+    print(f"\nLower {ci}% CI Intervals for Predicted Survival Probabilities:")
     print(tabulate(lower_ci_table, headers=headers, tablefmt="pretty"))
     
     # ---------------------------
@@ -291,7 +297,9 @@ def main():
     # We require that the decayed sum of nodes meets the threshold:
     target_steady = 0.995  # for example, 99.5% availability in steady state
     threshold = -math.log(1 - target_steady)
-    
+    # Enforce minimum batch size of 5 nodes for each public (otherwise the optimum is always 1 node)
+    min_nodes = 5
+
     def A_min(T, lambda_lower, k_upper, max_batches=1000):
         total = 0.0
         for j in range(1, max_batches + 1):
@@ -310,9 +318,8 @@ def main():
             continue
         R_min = threshold / A_val
         R_min_int = math.ceil(R_min)
-        # Enforce minimum batch size of 5 nodes
-        if R_min_int < 5:
-            R_min_int = 5
+        if R_min_int < min_nodes:
+            R_min_int = min_nodes
         T_hours = T / 3600.0
         cost = R_min_int / T_hours
         if cost < steady_optimal_cost:
@@ -335,6 +342,19 @@ def main():
     print(f"Then, to maintain a steady state with ≥{target_availability * 100}% availability, "
           f"publish batches of {steady_optimal_R} nodes every {steady_optimal_T_hours:.2f} hours.")
     print("This strategy minimizes the overall replication cost while ensuring high availability.")
+
+    # ---------------------------
+    # Additional Steady-State Range Information
+    # ---------------------------
+    # At steady state, the effective number of nodes available fluctuates between a minimum (just before republishing)
+    # and a maximum (immediately after republishing). We define:
+    #   A_min(T) = sum_{j=1}∞ exp[-((j*T)/λ)^{k}], which is the decayed contribution of batches at worst-case.
+    #   A_max(T) = 1 + A_min(T), since immediately after republishing the new batch is at full strength (1).
+    A_min_value = A_min(steady_optimal_T, lambda_ci_lower, k_ci_upper)
+    lowest_effective = steady_optimal_R * A_min_value
+    highest_effective = steady_optimal_R * (1 + A_min_value)
+    print(f"\nAt steady state, due to churn and periodic republishing, the effective replication fluctuates between")
+    print(f"approximately {lowest_effective:.2f} nodes (just before republishing) and {highest_effective:.2f} nodes (immediately after republishing).")
 
 if __name__ == "__main__":
     main()
