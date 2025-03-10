@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-This script aggregates multiple runs from files named "nodes_storing_*.csv",
+This script aggregates multiple runs from files named "run_*.csv",
 fits a Weibull survival model for each run, and computes the 95% confidence intervals 
 for both the fitted parameters and the predicted survival probabilities using
 the Student's t-distribution. For the predictions, the upper bound is capped at 100%.
@@ -75,9 +75,9 @@ def main():
     # ---------------------------
     # Load Multiple Runs and Store Data
     # ---------------------------
-    files = glob.glob("nodes_storing_*.csv")
+    files = glob.glob("run_*.csv")
     if not files:
-        raise FileNotFoundError("No files found matching the pattern 'nodes_storing_*.csv'")
+        raise FileNotFoundError("No files found matching the pattern 'run_*.csv'")
     
     # Create lists to store aggregated parameters and file data.
     lambda_list = []
@@ -97,7 +97,7 @@ def main():
     n_samples = len(lambda_array)
     
     # Compute t-based 95% CI for the Weibull parameters.
-    ci = 95 # 95% CI
+    ci = 99 # 95% CI
     ci_fraq = 1 - (1 - ci/100)/2 # ci_fraq
     t_crit = t.ppf(ci_fraq, df=n_samples - 1)
     
@@ -170,7 +170,7 @@ def main():
             linewidth=1.5, label=f"Worst-case {ci}% CI Fit")
     # Annotate the master plot with the aggregated Weibull model formula.
     master_model_text = r'$S(t)=\exp\left[-\left(\frac{t}{%.2f}\right)^{%.3f}\right]$' % (lambda_mean, k_mean)
-    ax.text(0.25, 0.95, master_model_text, transform=ax.transAxes,
+    ax.text(0.15, 0.95, master_model_text, transform=ax.transAxes,
             fontsize=16, verticalalignment='top',
             bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", lw=1))
         
@@ -265,7 +265,7 @@ def main():
     # Solving for t (in seconds), we get:
     #   t_max(n) = λ_lower_worst * (-ln(1 - 0.01^(1/n)))^(1/k_upper_worst)
     # where 0.01 = (1 - 0.99).
-    target_availability = 0.995  # 99% availability
+    target_availability = 0.999  # 99% availability
     def t_max(n, lambda_lower, k_upper, target):
         # Solve: 1 - (1 - exp[-(t/λ_lower)^k_upper])^n = target
         # => t_max = λ_lower * (-ln(1 - (1 - target)^(1/n)))^(1/k_upper)
@@ -295,7 +295,7 @@ def main():
     # For steady state we account for accumulating nodes from previous batches.
     # At the worst-case moment (just before the next batch), batches age by T, 2T, etc.
     # We require that the decayed sum of nodes meets the threshold:
-    target_steady = 0.995  # for example, 99.5% availability in steady state
+    target_steady = target_availability  # for example, 99.5% availability in steady state
     threshold = -math.log(1 - target_steady)
     # Enforce minimum batch size of 5 nodes for each public (otherwise the optimum is always 1 node)
     min_nodes = 5
@@ -337,10 +337,10 @@ def main():
     # Final Recommendation Summary
     # ---------------------------
     print("\nFinal Recommendation:")
-    print(f"Start by publishing an initial batch of {nonsteady_optimal_n} nodes "
+    print(f"Start by publishing to an initial batch of {nonsteady_optimal_n} nodes "
           f"(which achieves ≥99% availability with a republishing interval of {nonsteady_optimal_t_hours:.2f} hours).")
     print(f"Then, to maintain a steady state with ≥{target_availability * 100}% availability, "
-          f"publish batches of {steady_optimal_R} nodes every {steady_optimal_T_hours:.2f} hours.")
+          f"publish to batches of {steady_optimal_R} nodes every {steady_optimal_T_hours:.2f} hours.")
     print("This strategy minimizes the overall replication cost while ensuring high availability.")
 
     # ---------------------------

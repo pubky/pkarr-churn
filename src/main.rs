@@ -116,7 +116,6 @@ async fn publish_records(
 ) -> Vec<(PublicKey, Instant)> {
     let mut records = Vec::with_capacity(num_records);
     let mut total_publish_duration: u64 = 0;
-
     for i in 0..num_records {
         let keypair = Keypair::random();
         let packet = match SignedPacket::builder()

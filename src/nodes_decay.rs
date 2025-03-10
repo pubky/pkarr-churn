@@ -13,7 +13,7 @@ use tokio::time::sleep;
 #[command(author, version, about)]
 struct Cli {
     /// Number of records to publish
-    #[arg(long, default_value_t = 1024)]
+    #[arg(long, default_value_t = 512)]
     num_records: usize,
 
     /// Stop after this fraction of records cannot be resolved (0.0 < x <= 1.0)
@@ -25,7 +25,7 @@ struct Cli {
     ttl_s: u32,
 
     /// Sleep duration (in milliseconds) between successive checks
-    #[arg(long, default_value_t = 3000)]
+    #[arg(long, default_value_t = 6000)]
     sleep_duration_ms: u64,
 
     /// Maximum duration (in hours) for the churn monitoring phase
