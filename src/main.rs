@@ -40,7 +40,7 @@
 //! - `stop_fraction`: The fraction of records that, once churned, will stop the experiment (default: 0.8).
 //! - `ttl_s`: Time-to-live (in seconds) for each published record (default: 1 week).
 //! - `sleep_duration_ms`: Duration (in milliseconds) to wait between successive resolves (default: 1000 ms).
-//! - `max_hours`: Maximum duration (in hours) for the churn monitoring phase (default: 12 hours). The experiment stops
+//! - `max_hours`: Maximum duration (in hours) for the churn monitoring phase (default: 10 hours). The experiment stops
 //!   after this duration even if the `stop_fraction` threshold is not met.
 //!
 
@@ -61,7 +61,7 @@ struct Cli {
     num_records: usize,
 
     /// Stop after this fraction of records cannot be resolved (0.0 < x <= 1.0)
-    #[arg(long, default_value_t = 0.8)]
+    #[arg(long, default_value_t = 1.1)]
     stop_fraction: f64,
 
     /// TTL (in seconds) for the published records
@@ -73,7 +73,7 @@ struct Cli {
     sleep_duration_ms: u64,
 
     /// Maximum duration (in hours) for the churn monitoring phase
-    #[arg(long, default_value_t = 12)]
+    #[arg(long, default_value_t = 72)]
     max_hours: u64,
 }
 
@@ -116,7 +116,6 @@ async fn publish_records(
 ) -> Vec<(PublicKey, Instant)> {
     let mut records = Vec::with_capacity(num_records);
     let mut total_publish_duration: u64 = 0;
-
     for i in 0..num_records {
         let keypair = Keypair::random();
         let packet = match SignedPacket::builder()
@@ -163,12 +162,7 @@ async fn run_churn_loop(
     max_duration: Duration,
 ) -> anyhow::Result<()> {
     let total_keys = verified_records.len();
-    // Map to record the first time a key fails to resolve.
     let mut potential_churn: HashMap<PublicKey, Instant> = HashMap::new();
-
-    let file = File::create("churns4.csv")?;
-    let mut writer = BufWriter::new(file);
-    writeln!(writer, "pubkey,time_s")?;
 
     let churn_start = Instant::now();
     loop {
@@ -199,6 +193,22 @@ async fn run_churn_loop(
             }
         }
 
+        // Save the current churn data to CSV at the end of each loop iteration.
+        {
+            let file = File::create("churns_500_7.csv")?;
+            let mut writer = BufWriter::new(file);
+            writeln!(writer, "pubkey,time_s")?;
+            for (pubkey, publish_instant) in &verified_records {
+                if let Some(failure_instant) = potential_churn.get(pubkey) {
+                    let churn_time = failure_instant.duration_since(*publish_instant).as_secs();
+                    writeln!(writer, "{pubkey},{churn_time}")?;
+                } else {
+                    writeln!(writer, "{pubkey},0")?;
+                }
+            }
+            writer.flush()?;
+        }
+
         let churn_fraction = potential_churn.len() as f64 / total_keys as f64;
         println!("Current churn fraction: {:.2}%", churn_fraction * 100.0);
 
@@ -220,18 +230,5 @@ async fn run_churn_loop(
             break;
         }
     }
-
-    // Final logging: for keys that remain unresolved, log the churn time
-    // (difference between the first failure and publication). Keys that never failed
-    // are logged with a churn time of 0.
-    for (pubkey, publish_instant) in &verified_records {
-        if let Some(failure_instant) = potential_churn.get(pubkey) {
-            let churn_time = failure_instant.duration_since(*publish_instant).as_secs();
-            writeln!(writer, "{pubkey},{churn_time}")?;
-        } else {
-            writeln!(writer, "{pubkey},0")?;
-        }
-    }
-    writer.flush()?;
     Ok(())
 }
