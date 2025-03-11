@@ -146,21 +146,23 @@ def plot_cost_heatmap(lambda_lower, k_upper, target, optimal_n, optimal_t_hours)
     n_values = np.linspace(1, 30, 1000)
     T_grid, n_grid = np.meshgrid(T_hours, n_values)
     T_sec_grid = T_grid * 3600.0  # convert to seconds
+
+    min_color = 0.55
     
     # Compute survival probability for each (n, T).
     p_grid = 1 - (1 - np.exp(- (T_sec_grid / lambda_lower)**k_upper))**n_grid
     # Compute cost if survival probability meets target.
-    cost_grid = np.where(p_grid >= target, n_grid / T_grid, np.nan)
-    cost_grid = np.where((cost_grid >= 0.5) & (cost_grid <= 2), cost_grid, np.nan)
+    cost_grid = n_grid / T_grid
+    cost_grid = np.where((cost_grid >= min_color) & (cost_grid <= 2), n_grid / T_grid, np.nan)
     
     thresholds = [0.95, 0.99, 0.995, 0.999, 0.9999]
     contour_format = lambda x: f"{x*100:.2f}%"
     
     plot_heatmap_generic(T_grid, n_grid, cost_grid, p_grid, thresholds, contour_format,
                          "Republishing Time (hours)", "Replication Count (nodes)",
-                         "Heatmap of Cost to Achieve ≥99.9% Availability\n(Only 0.5 to 2 nodes/hour Shown)",
+                         f"Heatmap of Cost to Achieve ≥99.9% Availability\n(Only {min_color} to 2 nodes/hour Shown)",
                          optimal_t_hours, optimal_n, "Optimal Point",
-                         (0.5, 2), "heatmap_cost.png")
+                         (min_color, 2), "heatmap_cost.png")
 
 # ------------------------
 # Steady-State Heatmap Function
