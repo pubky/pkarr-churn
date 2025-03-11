@@ -14,7 +14,7 @@ We conducted experiments to analyze pkarr key churn behavior running `cargo run 
 
 Below is a consolidated plot of all experiments. The **black dotted line** represents the mean Weibull fit, while the **red dotted line** shows the worst-case 99% confidence interval (CI). To ensure robustness, we base our survival probability estimates on the **99% worst-case model**.
 
-![Node Storing Survival](images/plot_node_storing_survival_master.png)
+![Node Storing Survival](images/node_storing_survival_master.png)
 
 ## **Survival Probabilities (Lower 99% CI)**
 
@@ -40,6 +40,10 @@ cost = node_count / republishing_interval
 ```
 
 where cost is measured in **nodes/hour**. Our goal is to minimize this value while ensuring availability.
+
+![Heatmap of cost](images/heatmap_cost.png)
+
+This heatmap visualizes the **cost (nodes/hour)** associated with achieving a target availability of **≥99.9%** under different configurations of replication counts and republishing intervals. The x-axis represents the republishing interval (in hours), and the y-axis shows the number of nodes used per publishing event. Color indicates the replication cost. Only configurations with a cost between 0.5 and 2 nodes/hour are displayed. The contour lines illustrate availability thresholds, helping identify configurations that efficiently balance resource usage and availability. The optimal configuration (marked in red) minimizes resource usage while still meeting the target availability.
 
 ### **Optimal Conservative Configuration (≥99.9% Availability)**
 

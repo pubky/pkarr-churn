@@ -1,7 +1,8 @@
 churn*
 /plots
 nodes_storing*
-node_storing*
+/node_storing*
 nodes_decay*
+/heatmap_cost*
 survival_plot.png
 /target
